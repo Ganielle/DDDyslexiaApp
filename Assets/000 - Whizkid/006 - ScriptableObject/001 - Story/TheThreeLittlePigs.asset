@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a2ef309a224a90043a6d34ac07ab11f3, type: 3}
+  m_Name: TheThreeLittlePigs
+  m_EditorClassIdentifier: 
+  <Title>k__BackingField: THE THREE LITTLE PIGS
+  <Content>k__BackingField: "Three little pigs decided to build each other a house.
+    The first pig used a straw to build his house quickly. The second pig chose sticks,
+    thinking it would be strong enough. The third pig worked hard and built a house
+    of bricks. One day, a big bad wolf came along. He huffed and puffed and blew
+    down the straw house. Next, he huffed and puffed and blew down the stick house.
+    When he reached the brick house, he tried very hard but couldn\u2019t blow it
+    down. The pigs were safe and happy inside the strong brick house."
+  <StoryBG>k__BackingField: {fileID: 21300000, guid: 710bce3267a062f449ff1c0c7cf6a9fd,
+    type: 3}
