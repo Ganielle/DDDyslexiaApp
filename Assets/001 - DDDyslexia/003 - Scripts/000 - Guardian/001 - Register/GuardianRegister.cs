@@ -49,7 +49,7 @@ public class GuardianRegister : MonoBehaviour
 
         StartCoroutine(apiController.PostRequest("/parent/createparent", "", new Dictionary<string, object>
         {
-            { "studentusername", usernameTMP.text },
+            { "username", usernameTMP.text },
             { "password", passwordTMP.text },
             { "firstname", firstnameTMP.text },
             { "lastname", lastnameTMP.text }
@@ -66,6 +66,6 @@ public class GuardianRegister : MonoBehaviour
                 guardianRegister.SetActive(false);
                 noBgLoader.SetActive(false);
             });
-        }, () => noBgLoader.SetActive(false)));
+        }, () => noBgLoader.SetActive(false), false));
     }
 }

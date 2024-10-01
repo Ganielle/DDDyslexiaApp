@@ -6,11 +6,13 @@ using UnityEngine;
 public class UserData : ScriptableObject
 {
     [field: SerializeField] public string Token { get; set; }
+    [field: SerializeField] public string UserID { get; set; }
     [field: SerializeField] public string Username { get; set; }
 
     private void OnEnable()
     {
         Username = "";
         Token = "";
+        UserID = "";
     }
 }

@@ -13,9 +13,10 @@ public class APIController : MonoBehaviour
     [SerializeField] private NotificationController notificationController;
     [SerializeField] private GameObject noBGLoding;
 
-    public IEnumerator GetRequest(string route, string query, bool loaderEndState, System.Action<System.Object> callback, System.Action errorAction)
+    public IEnumerator GetRequest(string route, string query, bool loaderEndState, System.Action<System.Object> callback, System.Action errorAction, bool usetoken = true)
     {
-        while (userData.Token == "") yield return null;
+        if (usetoken)
+            while (userData.Token == "") yield return null;
 
         UnityWebRequest apiRquest = UnityWebRequest.Get(url + route + query);
         apiRquest.SetRequestHeader("Content-Type", "application/json");
@@ -106,9 +107,10 @@ public class APIController : MonoBehaviour
         }
     }
 
-    public IEnumerator PostRequest(string route, string query, Dictionary<string, object> paramsBody, bool loaderEndState, System.Action<System.Object> callback, System.Action errorAction)
+    public IEnumerator PostRequest(string route, string query, Dictionary<string, object> paramsBody, bool loaderEndState, System.Action<System.Object> callback, System.Action errorAction, bool usetoken = true)
     {
-        while (userData.Token == "") yield return null;
+        if (usetoken)
+            while (userData.Token == "") yield return null;
 
         UnityWebRequest apiRquest = UnityWebRequest.PostWwwForm(url + route + query, UnityWebRequest.kHttpVerbPOST);
 
