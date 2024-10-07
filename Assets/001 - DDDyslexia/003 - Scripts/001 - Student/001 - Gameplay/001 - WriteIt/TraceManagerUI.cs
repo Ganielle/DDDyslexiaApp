@@ -142,6 +142,14 @@ public class TraceManagerUI : MonoBehaviour
 
     public void NextAssessment()
     {
+        startGame = false;
+        goingBack = false;
+
+        if (difficulty == Difficulty.EASY) currentTime = easyTime;
+        else if (difficulty == Difficulty.MEDIUM) currentTime = mediumTime;
+        else currentTime = easyTime;
+        timerTMP.text = UpdateTimerDisplay(currentTime);
+
         if (currentLetterIndex >= traceLetterItemDatas.Count - 1)
         {
             notificationController.ShowError("Congratulations! You reached the end of the alphabet assessment.", () =>
