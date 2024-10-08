@@ -5,40 +5,37 @@ using UnityEngine.UI;
 
 public class TraceManagerUI : MonoBehaviour
 {
+    [Header("UI and Controllers")]
     [SerializeField] private GameObject loadingNoBG;
     [SerializeField] private APIController apiController;
     [SerializeField] private NotificationController notificationController;
     [SerializeField] private UserData userData;
 
-    [Space]
+    [Header("Game Settings")]
     [SerializeField] private float easyTime;
     [SerializeField] private float mediumTime;
     [SerializeField] private float hardTime;
 
-    [Space]
+    [Header("UI Elements")]
     [SerializeField] private TextMeshProUGUI timerTMP;
     [SerializeField] private Button skipBtn;
     [SerializeField] private Button startBtn;
-
-    [Space]
     [SerializeField] private GameObject difficultyMenu;
     [SerializeField] private GameObject writeItGameplay;
 
     [Header("Cameras")]
-    public Camera uiCamera;                    // Main perspective camera
-    public Camera renderTextureCamera;
-
-    [Header("UI Elements")]
-    public RawImage rawImage;                  // The UI component showing the Render Texture
-    public RectTransform rawImageRect;         // RectTransform of the Raw Image
-    public GameObject traceLRPrefab;           // Prefab for the LineRenderer
+    [SerializeField] private Camera uiCamera;
+    [SerializeField] private Camera renderTextureCamera;
 
     [Header("Tracing Settings")]
-    public List<TraceLetterItemData> traceLetterItemDatas;
-    public float pointRadius = 50f;            // Radius within which mouse input is valid
-    public float outOfBoundsThreshold = 100f;  // Distance threshold to determine out-of-bounds
+    [SerializeField] private RawImage rawImage;
+    [SerializeField] private RectTransform rawImageRect;
+    [SerializeField] private GameObject traceLRPrefab;
+    [SerializeField] private List<TraceLetterItemData> traceLetterItemDatas;
+    [SerializeField] private float pointRadius = 50f;
+    [SerializeField] private float outOfBoundsThreshold = 100f;
 
-    [Header("DEBUGGER")]
+    [Header("Debugging")]
     [SerializeField] private Difficulty difficulty;
     [SerializeField] private int currentLetterIndex = 0;
     [SerializeField] private int currentTraceIndex = 0;
@@ -50,35 +47,26 @@ public class TraceManagerUI : MonoBehaviour
     [SerializeField] private TraceLetterItemData currentLetter;
     [SerializeField] private float currentTime;
 
-    private List<Vector2> drawnPoints = new List<Vector2>();  // Points that user has traced
-    private List<LineRenderer> instantiatedLRs = new List<LineRenderer>();  // Track instantiated LineRenderers
+    private List<Vector2> drawnPoints = new List<Vector2>();
+    private List<LineRenderer> instantiatedLRs = new List<LineRenderer>();
 
     void Update()
     {
-        CountdownTimer();
-
-        if (Input.GetMouseButton(0)) // Left mouse button is pressed
+        if (startGame && Input.GetMouseButton(0) && !goingBack)
         {
-            if (!startGame) return;
-            else if (goingBack) return;
-
             Vector2 mousePosition = Input.mousePosition;
-
-            // Check if the mouse is within the bounds of the Raw Image
             if (RectTransformUtility.RectangleContainsScreenPoint(rawImageRect, mousePosition, uiCamera))
             {
-                // Convert mouse input to world space and check collisions
                 Vector2 localPoint = ConvertMouseToLocalPoint(mousePosition);
                 worldPoint = ConvertLocalToViewportPoint(localPoint);
-
-                
-
                 ProcessMouseClick();
             }
         }
+
+        CountdownTimer();
     }
 
-    #region GAME CONTROL PANEL
+    #region Game Control
 
     private void CountdownTimer()
     {
@@ -94,183 +82,278 @@ public class TraceManagerUI : MonoBehaviour
         }
 
         currentTime -= Time.deltaTime;
-        timerTMP.text = UpdateTimerDisplay(currentTime);
+        timerTMP.text = FormatTime(currentTime);
     }
 
-    string UpdateTimerDisplay(float timeToDisplay)
+    private string FormatTime(float timeToDisplay)
     {
-        // Clamp time to prevent negative values
         timeToDisplay = Mathf.Clamp(timeToDisplay, 0, Mathf.Infinity);
-
-        // Get minutes and seconds from the float time
         int minutes = Mathf.FloorToInt(timeToDisplay / 60);
         int seconds = Mathf.FloorToInt(timeToDisplay % 60);
-
-        // Format string with leading zeroes (e.g., 00 : 20)
         return string.Format("Timer: {0:00} : {1:00}", minutes, seconds);
     }
 
     public void StartWriting()
     {
-        if (difficulty == Difficulty.EASY) currentTime = easyTime;
-        else if (difficulty == Difficulty.MEDIUM) currentTime = mediumTime;
-        else currentTime = easyTime;
-        timerTMP.text = UpdateTimerDisplay(currentTime);
-
-        startBtn.interactable = false;
-        skipBtn.interactable = false;
+        currentTime = GetTimeForDifficulty();
+        timerTMP.text = FormatTime(currentTime);
+        ToggleGameControls(false);
         startGame = true;
     }
 
     public void SelectDifficulty(int index)
     {
         difficulty = (Difficulty)index;
-
-        if (difficulty == Difficulty.EASY) currentTime = easyTime;
-        else if (difficulty == Difficulty.MEDIUM) currentTime = mediumTime;
-        else currentTime = easyTime;
-        timerTMP.text = UpdateTimerDisplay(currentTime);
-
-        startBtn.interactable = true;
-        skipBtn.interactable = true;
-        currentLetterIndex = 0;
-        currentTraceIndex = 0;
-        startGame = false;
-        currentLetter = Instantiate(traceLetterItemDatas[currentLetterIndex].gameObject).GetComponent<TraceLetterItemData>();
-        ResetAllLineRenderers();
+        ResetGameState();
+        LoadCurrentLetter();
     }
 
     public void NextAssessment()
     {
-        startGame = false;
+        loadingNoBG.SetActive(true);
         goingBack = false;
-
-        if (difficulty == Difficulty.EASY) currentTime = easyTime;
-        else if (difficulty == Difficulty.MEDIUM) currentTime = mediumTime;
-        else currentTime = easyTime;
-        timerTMP.text = UpdateTimerDisplay(currentTime);
-
-        if (currentLetterIndex >= traceLetterItemDatas.Count - 1)
+        startGame = false;
+        if (!HasNextLetter())
         {
-            notificationController.ShowError("Congratulations! You reached the end of the alphabet assessment.", () =>
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
             {
-                ResetGame();
-            });
-            return;
+                { "score", GetScore() },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                NotifyCompletion("Congratulations! You reached the end of the alphabet assessment.", ResetGame);
+            }, () =>
+            {
+
+                ResetCurrentGame();
+            }));
         }
-
-        //  DELETE THIS SHIT
-        notificationController.ShowError("Congratulations! You passed the test. Click ok for the next test.", () =>
+        else
         {
-            startBtn.interactable = true;
-            skipBtn.interactable = true;
-        });
-
-        currentLetterIndex++;
-        Destroy(currentLetter.gameObject);
-        currentLetter = Instantiate(traceLetterItemDatas[currentLetterIndex].gameObject).GetComponent<TraceLetterItemData>();
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
+            {
+                { "score", GetScore() },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                NotifyCompletion("You passed the test. Click OK for the next test.", () =>
+                {
+                    currentLetterIndex++;
+                    LoadCurrentLetter();
+                });
+            }, () =>
+            {
+                ResetCurrentGame();
+            }));
+        }
     }
 
     public void FailedNextAssessment()
     {
-        if (currentLetterIndex >= traceLetterItemDatas.Count - 1)
+        loadingNoBG.SetActive(true);
+        goingBack = false;
+        startGame = false;
+        if (!HasNextLetter())
         {
-            notificationController.ShowError("Congratulations! You reached the end of the alphabet assessment.", () =>
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
             {
-                ResetGame();
-            });
-            return;
+                { "score", GetScore() },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                NotifyCompletion("Congratulations! You reached the end of the alphabet assessment.", ResetGame);
+            }, () =>
+            {
+
+                ResetCurrentGame();
+            }));
         }
-
-        //  DELETE THIS SHIT
-        notificationController.ShowError("You failed the test! Get ready for the next test.", () =>
+        else
         {
-            startBtn.interactable = true;
-            skipBtn.interactable = true;
-        });
-
-        currentLetterIndex++;
-        Destroy(currentLetter.gameObject);
-        currentLetter = Instantiate(traceLetterItemDatas[currentLetterIndex].gameObject).GetComponent<TraceLetterItemData>();
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
+            {
+                { "score", GetScore() },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                NotifyCompletion("You failed the test! Get ready for the next test.", () =>
+                {
+                    currentLetterIndex++;
+                    LoadCurrentLetter();
+                });
+            }, () =>
+            {
+                ResetCurrentGame();
+            }));
+        }
     }
 
     public void Skip()
     {
-        if (currentLetterIndex >= traceLetterItemDatas.Count - 1)
+        loadingNoBG.SetActive(true);
+        goingBack = false;
+        startGame = false;
+        if (!HasNextLetter())
         {
-            notificationController.ShowError("Are you sure you want to skip this alphabet? There's no next alphabet left, if you skip this you would return to menu.", () =>
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
             {
-                ResetGame();
-            });
-            return;
+                { "score", "0" },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                NotifyCompletion("No more letters left. Returning to the menu.", ResetGame);
+            }, () =>
+            {
+                ResetCurrentGame();
+            }));
         }
-        currentLetterIndex++;
-        Destroy(currentLetter.gameObject);
-        currentLetter = Instantiate(traceLetterItemDatas[currentLetterIndex].gameObject).GetComponent<TraceLetterItemData>();
-        ResetAllLineRenderers();
+        else
+        {
+            Debug.Log("SAVE SCORE");
+            StartCoroutine(apiController.PostRequest("/writeit/savescore", "", new Dictionary<string, object>
+            {
+                { "score", "0" },
+                { "letter", currentLetter.letter },
+                { "difficulty", difficulty == Difficulty.EASY ? "Easy" : difficulty == Difficulty.MEDIUM ? "Medium" : difficulty == Difficulty.HARD ? "Hard" : "None" }
+            }, false, (value) =>
+            {
+                currentLetterIndex++;
+                LoadCurrentLetter();
+            }, () =>
+            {
+                ResetCurrentGame();
+            }));
+        }
     }
+
     public void GoBack()
     {
         goingBack = true;
-        notificationController.ShowConfirmation("Are you sure you want to stop the assessment?", () =>
-        {
-            ResetGame();
-        }, () => goingBack = false);
+        notificationController.ShowConfirmation("Are you sure you want to stop the assessment?", ResetGame, () => goingBack = false);
     }
 
     private void ResetGame()
     {
         ResetAllLineRenderers();
-        difficultyMenu.SetActive(true);
-        writeItGameplay.SetActive(false);
+        ToggleGameState(false);
         goingBack = false;
         startGame = false;
-        Destroy(currentLetter.gameObject);
         currentLetter = null;
+        timerTMP.text = UpdateTimerDisplay(GetTimeForDifficulty());
+        startBtn.interactable = true;
+        skipBtn.interactable = true;
+    }
+
+    private void ResetGameState()
+    {
+        // Reset LineRenderers and trace points
+        ResetAllLineRenderers();
+
+        // Disable gameplay UI and show the difficulty selection menu
+        difficultyMenu.SetActive(true);
+        writeItGameplay.SetActive(false);
+
+        // Reset flags and states
+        goingBack = false;
+        startGame = false;
+
+        // Destroy the current letter's GameObject if it exists
+        if (currentLetter != null)
+        {
+            Destroy(currentLetter.gameObject);
+            currentLetter = null;
+        }
+
+        // Reset timer and buttons
+        timerTMP.text = UpdateTimerDisplay(0);
+        startBtn.interactable = true;
+        skipBtn.interactable = true;
+
+        // Reset trace indices
+        currentLetterIndex = 0;
+        currentTraceIndex = 0;
+    }
+
+    private void ResetCurrentGame()
+    {
+        goingBack = false;
+        startGame = false;
+
+        // Reset LineRenderers and trace points
+        ResetAllLineRenderers();
+        LoadCurrentLetter();
+
+        timerTMP.text = UpdateTimerDisplay(GetTimeForDifficulty());
+        startBtn.interactable = true;
+        skipBtn.interactable = true;
+    }
+
+    private void LoadCurrentLetter()
+    {
+        Destroy(currentLetter?.gameObject);
+        currentLetter = Instantiate(traceLetterItemDatas[currentLetterIndex].gameObject).GetComponent<TraceLetterItemData>();
+        ResetAllLineRenderers();
+        timerTMP.text = UpdateTimerDisplay(GetTimeForDifficulty());
+        startBtn.interactable = true;
+        skipBtn.interactable = true;
+    }
+
+    private void ToggleGameState(bool isActive)
+    {
+        difficultyMenu.SetActive(!isActive);
+        writeItGameplay.SetActive(isActive);
+    }
+
+    private void ToggleGameControls(bool isInteractable)
+    {
+        startBtn.interactable = isInteractable;
+        skipBtn.interactable = isInteractable;
+    }
+
+    private bool HasNextLetter() => currentLetterIndex < traceLetterItemDatas.Count - 1;
+
+    private float GetTimeForDifficulty() =>
+        difficulty switch
+        {
+            Difficulty.EASY => easyTime,
+            Difficulty.MEDIUM => mediumTime,
+            _ => hardTime,
+        };
+
+    private void NotifyCompletion(string message, System.Action callback)
+    {
+        notificationController.ShowError(message, callback);
     }
 
     #endregion
 
-    #region TRACE FUNCTIONALITY
+    #region Tracing Functionality
 
-    // Check if the point goes out of bounds (based on a threshold distance)
-    private bool IsOutOfBounds(RaycastHit2D point)
-    {
-        if (point.collider == null) return false;
-
-        if (!canDrawLine) return false;
-
-        if (!point.collider.CompareTag("WriteItOutOfBounds")) return false;  // Bounds check invalid if no more traces
-
-        return true;
-    }
-
-    // Process mouse click, check hit, and update line drawing
     private void ProcessMouseClick()
     {
         var hit = Physics2D.Raycast(worldPoint, Vector2.zero);
 
-        // Check if the drawing is out of bounds
         if (IsOutOfBounds(hit))
         {
-            ResetAllLineRenderers();   // Reset all lines and trace index
+            ResetAllLineRenderers();
             return;
         }
 
-        if (canDrawLine)
+        if (!canDrawLine && hit.collider?.gameObject == currentLetter.startingTracePoints[currentTraceIndex].gameObject)
         {
-            UpdateDrawing();
+            StartLineRenderer();
         }
 
-        Debug.Log(hit.collider.gameObject.name);
-
-        if (hit.collider == null || !hit.collider.CompareTag("WriteIt"))
-            return;
-
-        // Handle start of tracing
-        HandleTraceStart(hit);
-
-        // Handle drawing continuation
         if (canDrawLine)
         {
             UpdateDrawing();
@@ -278,19 +361,16 @@ public class TraceManagerUI : MonoBehaviour
         }
     }
 
-    // Handles starting a new trace if the first point is hit
-    private void HandleTraceStart(RaycastHit2D hit)
+    private bool IsOutOfBounds(RaycastHit2D hit) =>
+        hit.collider != null && hit.collider.CompareTag("WriteItOutOfBounds");
+
+    private void StartLineRenderer()
     {
-        Debug.Log(hit.collider.gameObject == currentLetter.startingTracePoints[currentTraceIndex].gameObject);
-        if (!canDrawLine && hit.collider.gameObject == currentLetter.startingTracePoints[currentTraceIndex].gameObject)
-        {
-            currentLR = Instantiate(traceLRPrefab).GetComponent<LineRenderer>();
-            instantiatedLRs.Add(currentLR);  // Track the instantiated LineRenderer
-            canDrawLine = true;
-        }
+        currentLR = Instantiate(traceLRPrefab).GetComponent<LineRenderer>();
+        instantiatedLRs.Add(currentLR);
+        canDrawLine = true;
     }
 
-    // Updates the LineRenderer by adding points
     private void UpdateDrawing()
     {
         drawnPoints.Add(worldPoint);
@@ -298,26 +378,28 @@ public class TraceManagerUI : MonoBehaviour
         currentLR.SetPositions(ConvertToLineRendererPositions(drawnPoints));
     }
 
-    // Checks if the current trace is complete and moves to the next trace point
     private void CheckForTraceCompletion()
     {
         if (Vector2.Distance(worldPoint, traceLetterItemDatas[currentLetterIndex].endTracePoints[currentTraceIndex].position) < pointRadius)
         {
             if (currentTraceIndex < traceLetterItemDatas[currentLetterIndex].startingTracePoints.Length - 1)
             {
-                Debug.Log("Trace Completed!");
-                ResetLineRenderer();
                 currentTraceIndex++;
+                ResetLineRenderer();
             }
             else
             {
-                // All traces completed
                 FinishTracing();
             }
         }
     }
 
-    // Resets the current line and drawing state for the next trace point
+    private void FinishTracing()
+    {
+        NextAssessment();
+        ResetAllLineRenderers();
+    }
+
     private void ResetLineRenderer()
     {
         currentLR = null;
@@ -325,41 +407,30 @@ public class TraceManagerUI : MonoBehaviour
         drawnPoints.Clear();
     }
 
-    // Finishes the tracing sequence
-    private void FinishTracing()
-    {
-        Debug.Log("All traces completed!");
-
-        //  PUT THIS IN API CALL SUCCESSFUL CALL
-        NextAssessment();
-        ResetAllLineRenderers();
-    }
-
-    // Reset all instantiated LineRenderers and reset the trace index
     private void ResetAllLineRenderers()
     {
         foreach (var lineRenderer in instantiatedLRs)
         {
             if (lineRenderer != null)
-                Destroy(lineRenderer.gameObject);  // Destroy each LineRenderer object
+                Destroy(lineRenderer.gameObject);
         }
 
-
-        instantiatedLRs.Clear();  // Clear the list of LineRenderers
-        currentTraceIndex = 0;    // Reset the trace index
-        canDrawLine = false;      // Stop drawing
-        drawnPoints.Clear();      // Clear drawn points
-        Debug.Log("Out of bounds! Resetting traces.");
+        instantiatedLRs.Clear();
+        currentTraceIndex = 0;
+        canDrawLine = false;
+        drawnPoints.Clear();
     }
 
-    // Convert mouse position to local point on the Raw Image
+    #endregion
+
+    #region Utility
+
     private Vector2 ConvertMouseToLocalPoint(Vector2 mousePosition)
     {
         RectTransformUtility.ScreenPointToLocalPointInRectangle(rawImageRect, mousePosition, uiCamera, out Vector2 localPoint);
         return localPoint;
     }
 
-    // Convert the local point to world space via viewport
     private Vector3 ConvertLocalToViewportPoint(Vector2 localPoint)
     {
         Vector2 viewportClick = localPoint - rawImageRect.rect.min;
@@ -371,22 +442,53 @@ public class TraceManagerUI : MonoBehaviour
         return renderTextureCamera.ViewportToWorldPoint(viewportClick);
     }
 
-    // Convert traced points to world positions for LineRenderer
     private Vector3[] ConvertToLineRendererPositions(List<Vector2> points)
     {
         Vector3[] worldPoints = new Vector3[points.Count];
+
         for (int i = 0; i < points.Count; i++)
         {
-            worldPoints[i] = new Vector3(points[i].x, points[i].y, 0);  // Z axis fixed to 0
+            // Convert 2D points to 3D by fixing Z to 0
+            worldPoints[i] = new Vector3(points[i].x, points[i].y, 0);
         }
+
         return worldPoints;
     }
 
-    // Draw gizmos for debugging
-    private void OnDrawGizmos()
+    private string UpdateTimerDisplay(float timeInSeconds)
     {
-        Gizmos.color = Color.red;
-        Gizmos.DrawRay(worldPoint, Vector3.forward * 10f);
+        // Calculate minutes and seconds
+        int minutes = Mathf.FloorToInt(timeInSeconds / 60);
+        int seconds = Mathf.FloorToInt(timeInSeconds % 60);
+
+        // Format the time as MM:SS
+        return string.Format("{0:00}:{1:00}", minutes, seconds);
+    }
+
+    private string GetScore()
+    {
+        if (difficulty == Difficulty.EASY)
+        {
+            if (currentTime > 15) return "100";
+            else if (currentTime > 5 && currentTime <= 15) return "50";
+            else if (currentTime > 0 && currentTime <= 5) return "25";
+            else return "0";
+        }
+        else if (difficulty == Difficulty.MEDIUM)
+        {
+            if (currentTime > 10) return "100";
+            else if (currentTime > 5 && currentTime <= 10) return "50";
+            else if (currentTime > 0 && currentTime <= 5) return "25";
+            else return "0";
+        }
+        else if (difficulty == Difficulty.HARD)
+        {
+            if (currentTime > 2) return "100";
+            else if (currentTime > 0 && currentTime <= 2) return "25";
+            else return "0";
+        }
+
+        return "0";
     }
 
     #endregion

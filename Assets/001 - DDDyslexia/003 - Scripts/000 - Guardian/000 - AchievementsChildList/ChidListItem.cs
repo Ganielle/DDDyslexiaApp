@@ -10,6 +10,7 @@ public class ChidListItem : MonoBehaviour
 
     [Header("DEBUGGER")]
     [SerializeField] private string userid;
+    [SerializeField] private GuardianAchievementController controller;
 
     //  =================
 
@@ -17,14 +18,17 @@ public class ChidListItem : MonoBehaviour
 
     //  =================
 
-    public void SetData(string userid, Action action)
+    public void SetData(string userid, string fullname, GuardianAchievementController controller, Action action)
     {
         this.userid = userid;
+        childNameTMP.text = fullname;
         finalAction = action;
+        this.controller = controller;
     }
 
     public void SelectBtn()
     {
+        controller.selectedChildren = userid;
         finalAction?.Invoke();
     }
 }
